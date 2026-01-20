@@ -3,7 +3,7 @@ package metrics
 import (
 	"net/http"
 
-	"github.com/yourname/goprof-optimizer/internal/util"
+	"github.com/AbhishekChauhan17/goprof-optimizer/internal/util"
 )
 
 func (s *Server) handleLiveness(w http.ResponseWriter, r *http.Request) {

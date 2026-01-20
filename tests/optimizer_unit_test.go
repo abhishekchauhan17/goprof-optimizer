@@ -3,9 +3,9 @@ package tests
 import (
 	"testing"
 
-	"github.com/yourname/goprof-optimizer/internal/config"
-	"github.com/yourname/goprof-optimizer/internal/logging"
-	"github.com/yourname/goprof-optimizer/internal/profiler"
+	"github.com/AbhishekChauhan17/goprof-optimizer/internal/config"
+	"github.com/AbhishekChauhan17/goprof-optimizer/internal/logging"
+	"github.com/AbhishekChauhan17/goprof-optimizer/internal/profiler"
 )
 
 func TestOptimizerGeneratesSuggestions(t *testing.T) {

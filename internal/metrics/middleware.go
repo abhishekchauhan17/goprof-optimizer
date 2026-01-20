@@ -8,8 +8,8 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/yourname/goprof-optimizer/internal/logging"
-	"github.com/yourname/goprof-optimizer/internal/util"
+	"github.com/AbhishekChauhan17/goprof-optimizer/internal/logging"
+	"github.com/AbhishekChauhan17/goprof-optimizer/internal/util"
 )
 
 const requestIDHeader = "X-Request-ID"
