@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/profiler"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/profiler"
 )
 
 // testContext returns a context that auto-times-out to avoid leaks in tests.

@@ -1,4 +1,4 @@
-module github.com/AbhishekChauhan17/goprof-optimizer
+module github.com/abhishekchauhan17/goprof-optimizer
 
 go 1.22
 

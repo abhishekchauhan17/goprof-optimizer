@@ -1,78 +1,94 @@
-# goprof-optimizer
+## 📦 Embedding / Sidecar Usage
 
-**Production-grade Go runtime profiler + memory retention analyzer.**  
-Built with enterprise patterns, Prometheus metrics, pprof integration, structured logging, and configurable sampling.
+Use the public wrappers under `pkg/` to embed this profiler in any Go application. This lets the profiler run inside your process, sample memory continuously, and expose HTTP/Prometheus/pprof endpoints alongside your app.
 
----
+- **Key packages**
+  - `pkg/config`: re-exports configuration (`ProfilerConfig`, `DefaultConfig`, `Load`, `Validate`).
+  - `pkg/logging`: re-exports `Logger`, `New`, `Noop`.
+  - `pkg/profiler`: re-exports `Profiler` and `RegisterPprofHandlers`.
+  - `pkg/metrics`: returns an `http.Handler` with all endpoints.
+  - `pkg/agent`: convenience starter that returns a handler and optionally runs a separate pprof server.
 
-## ✨ Features
+- **Endpoints provided** (mounted wherever you choose):
+  - `/health/live`, `/health/ready`
+  - `/v1/metrics/latest`, `/v1/metrics/history?limit=N`
+  - `/v1/metrics/allocations/top?limit=N`, `/v1/metrics/retentions/top?limit=N`
+  - `/v1/suggestions`, `/v1/alerts`
+  - `/metrics` (Prometheus) when enabled
+  - pprof: `/debug/pprof/*` (on same or separate listener)
 
-- Runtime memory sampling (`runtime.MemStats`)
-- Allocation tracking (`TrackAllocation`)
-- Retention estimation per type/tag
-- Heuristic optimization suggestions
-- Prometheus metrics (`/metrics`)
-- Health endpoints:
-  - `/health/live`
-  - `/health/ready`
-- REST API:
-  - `/v1/metrics/latest`
-  - `/v1/metrics/history?limit=N`
-  - `/v1/suggestions`
-  - `/v1/alerts`
-- pprof endpoints
-- Fully configurable via YAML or environment
+### Option A: Fastest start (pkg/agent)
 
----
+```go
+package main
 
-## 🚀 Running locally
+import (
+    "net/http"
 
-```bash
-make run
-````
+    profilerAgent "github.com/abhishekchauhan17/goprof-optimizer/pkg/agent"
+    profilerConfig "github.com/abhishekchauhan17/goprof-optimizer/pkg/config"
+    profilerLogging "github.com/abhishekchauhan17/goprof-optimizer/pkg/logging"
+)
 
-Or manually:
+func main() {
+    cfg := profilerConfig.DefaultConfig()
+    cfg.PrometheusEnabled = true
+    cfg.PprofEnabled = true
+    cfg.PprofListenAddr = ":6060" // separate pprof port (keep internal)
 
-```bash
-go run ./cmd/profiler -config=config.example.yaml
+    log := profilerLogging.New("info")
+    agent, _ := profilerAgent.Start(cfg, log)
+
+    mux := http.NewServeMux()
+    // Mount all profiler endpoints under /_profiler/*
+    mux.Handle("/_profiler/", http.StripPrefix("/_profiler", agent.Handler))
+
+    // Your app routes here...
+    // mux.HandleFunc("/api/...", yourHandler)
+
+    _ = http.ListenAndServe(":8080", mux)
+}
 ```
 
----
+### Option B: More control (pkg/profiler + pkg/metrics)
 
-## 🐳 Docker
+```go
+package main
 
-```bash
-docker build -t goprof-optimizer .
-docker run -p 8080:8080 goprof-optimizer
+import (
+    "context"
+    "net/http"
+
+    profilerConfig "github.com/abhishekchauhan17/goprof-optimizer/pkg/config"
+    profilerLogging "github.com/abhishekchauhan17/goprof-optimizer/pkg/logging"
+    profilerMetrics "github.com/abhishekchauhan17/goprof-optimizer/pkg/metrics"
+    profilerPkg "github.com/abhishekchauhan17/goprof-optimizer/pkg/profiler"
+)
+
+func main() {
+    cfg := profilerConfig.DefaultConfig()
+    log := profilerLogging.New("info")
+
+    p := profilerPkg.New(cfg, log)
+    ctx := context.Background()
+    p.Start(ctx)
+
+    handler := profilerMetrics.NewHandler(cfg, p, log)
+
+    mux := http.NewServeMux()
+    mux.Handle("/_profiler/", http.StripPrefix("/_profiler", handler))
+
+    // Optional: separate pprof listener
+    // mux2 := http.NewServeMux()
+    // profilerPkg.RegisterPprofHandlers(mux2)
+    // go http.ListenAndServe(":6060", mux2)
+
+    _ = http.ListenAndServe(":8080", mux)
+}
 ```
 
----
+### Tips
 
-## 📊 Prometheus
-
-If you're using `docker-compose.yml`, a Prometheus instance is included.
-
-Open:
-[http://localhost:9090](http://localhost:9090)
-
----
-
-## 🧪 Testing
-
-```bash
-make test
-```
-
----
-
-## 📂 Project Structure
-
-(omitted here – see discussion and directories)
-
----
-
-## 📝 License
-
-MIT (or whatever you want)
-
-```
+- **Security**: keep pprof/internal endpoints on private networks or behind auth.
+- **Overhead**: start with `sampling_interval_ms: 500–1000` and cap `max_history_samples`.
+- **Attribution**: call `Profiler.TrackAllocation(obj, "tag")` in hot paths to power top allocations/retentions and suggestions.

@@ -3,8 +3,8 @@ package alerts
 import (
 	"time"
 
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/config"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/profiler"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/config"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/profiler"
 )
 
 // BuildAlertsFromSnapshot derives alerts from the latest profiler snapshot,

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/config"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/profiler"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/config"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/profiler"
 )
 
 // Checker encapsulates basic liveness/readiness logic for the service.

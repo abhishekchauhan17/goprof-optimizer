@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/config"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/logging"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/config"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/logging"
 )
 
 // AllocationStat represents aggregated allocation info for a (type, tag) pair.

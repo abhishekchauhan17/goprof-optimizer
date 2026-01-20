@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/alerts"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/util"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/alerts"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/util"
 )
 
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {

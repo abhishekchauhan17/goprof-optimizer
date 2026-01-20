@@ -15,9 +15,9 @@ ARG COMMIT=none
 ARG BUILD_DATE=unknown
 
 RUN go build -ldflags "\
-   -X 'github.com/AbhishekChauhan17/goprof-optimizer/internal/version.Version=${VERSION}' \
-   -X 'github.com/AbhishekChauhan17/goprof-optimizer/internal/version.Commit=${COMMIT}' \
-   -X 'github.com/AbhishekChauhan17/goprof-optimizer/internal/version.BuildDate=${BUILD_DATE}' \
+   -X 'github.com/abhishekchauhan17/goprof-optimizer/internal/version.Version=${VERSION}' \
+   -X 'github.com/abhishekchauhan17/goprof-optimizer/internal/version.Commit=${COMMIT}' \
+   -X 'github.com/abhishekchauhan17/goprof-optimizer/internal/version.BuildDate=${BUILD_DATE}' \
 " -o goprof-optimizer ./cmd/profiler
 
 # ---- Stage 2: Runtime ----

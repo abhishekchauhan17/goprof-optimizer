@@ -5,12 +5,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/alerts"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/config"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/health"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/logging"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/metrics"
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/profiler"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/alerts"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/config"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/health"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/logging"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/metrics"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/profiler"
 )
 
 func newTestServer() http.Handler {

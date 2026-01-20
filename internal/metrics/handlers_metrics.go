@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/AbhishekChauhan17/goprof-optimizer/internal/util"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/util"
 )
 
 func (s *Server) handleMetricsLatest(w http.ResponseWriter, r *http.Request) {
