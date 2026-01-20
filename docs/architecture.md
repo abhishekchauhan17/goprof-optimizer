@@ -1,0 +1,487 @@
+# Architecture Overview
+
+## Purpose
+
+`goprof-optimizer` is a standalone backend service that performs:
+
+- runtime heap sampling (`runtime.MemStats`)
+- semantic allocation tracking (`TrackAllocation(type, tag)`)
+- retention estimation per type/tag
+- heuristic optimization suggestion generation
+- Prometheus metrics export
+- REST API access to profiler state
+- optional pprof endpoints
+- alert derivation from retention + suggestions
+
+It is designed for **low overhead**, continuous profiling inside production services.
+
+---
+
+## High-Level System Diagram
+
+```
+
+```
+           ┌────────────────────┐
+           │   Application Code  │
+           │  calls TrackAlloc() │
+           └───────────┬────────┘
+                       │
+                       ▼
+              ┌───────────────────┐
+              │    Profiler       │
+              │ (allocs, retens)  │
+              └───────┬──────────┘
+                      │
+           ┌──────────▼──────────┐
+           │ Sampling Goroutine  │
+           │  runtime.MemStats   │
+           └──────────┬──────────┘
+                      │
+                      ▼
+               ┌───────────────┐
+               │ Snapshots[]   │
+               └──────┬────────┘
+                      │
+    ┌─────────────────┼─────────────────┐
+    │                 │                 │
+    ▼                 ▼                 ▼
+```
+
+Suggestions        Retentions         Alerts Engine
+│                 │                 │
+└───────────────┬┴───────────────┘
+▼
+┌─────────────────┐
+│ HTTP Layer      │
+│  /v1/*          │
+│  /metrics       │
+│  /pprof         │
+└─────────────────┘
+
+```
+
+---
+
+## Internal Packages
+
+### `internal/profiler/`
+Contains all memory profiling logic:
+
+- sampling loop (`Start`)
+- allocation tracking
+- retention estimation
+- suggestion generation
+- pprof registration
+- snapshot history & sorting
+
+No external dependencies beyond `runtime`, `reflect`, and small helpers.
+
+---
+
+### `internal/metrics/`
+Responsible for the entire HTTP API:
+
+- routing (`Router()`)
+- handlers for metrics, suggestions, alerts, health
+- middleware (logging, panic recovery, request ID)
+- Prometheus collector
+
+---
+
+### `internal/alerts/`
+Simple rules engine:
+
+- derive alerts from snapshot + suggestions
+- in-memory store
+- rule primitives for retention & spikes
+
+---
+
+### `internal/config/`
+Configuration loader:
+
+- defaults
+- YAML/JSON file parsing
+- environment variable overlay
+- strict validation
+
+---
+
+### Runtime Flow
+
+1. **main.go** loads config + initializes logger  
+2. Creates **Profiler**, **Alerts engine**, **Health checker**  
+3. Starts **profiler sampling loop**  
+4. Starts **HTTP server**  
+5. Exposes:
+   - `/v1/metrics/*`
+   - `/v1/suggestions`
+   - `/v1/alerts`
+   - `/health/live`, `/health/ready`
+   - `/metrics` (Prometheus)
+   - `/debug/pprof/*`  
+
+---
+
+## Concurrency Model
+
+- All profiler mutable state protected via a single `sync.RWMutex`
+- Sampling loop reads MemStats -> updates retention + suggestions  
+- TrackAllocation is safe for high concurrency  
+- History retained in ring-buffer style  
+- HTTP handlers read under RLock  
+- No goroutine leaks (controlled via context)
+
+---
+
+## Operational Characteristics
+
+- Designed for **continuous use** alongside large Go binaries  
+- Minimal reflection (only on `TypeOf(obj)`)  
+- No deep memory traversal (strictly shallow estimates)  
+- Low steady-state overhead (sampling default 1s interval)
+
+---
+
+## Deployment
+
+Supports:
+
+- Docker
+- Kubernetes (health/readiness endpoints)
+- Prometheus scraping
+- SRE dashboards easily built on top
+
+---
+
+## Future Extensions
+
+- distributed sampling ingestion  
+- JSON logging with structured correlation IDs  
+- high-cardinality label protection  
+- variant retention signal heuristics  
+- Pluggable alert rule sets
+
+```
+
+This architecture is intentionally clean, modular, and production-friendly.
+
+````
+
+---
+
+# 📘 **2. `docs/api.md`**
+
+**File:** `goprof-optimizer/docs/api.md`
+
+```markdown
+# REST API Specification
+
+Base URL:
+
+````
+
+[http://localhost:8080/](http://localhost:8080/)
+
+````
+
+All responses are JSON.
+
+---
+
+## Health Endpoints
+
+### `GET /health/live`
+
+**Purpose:** Basic process liveness.
+
+Response:
+```json
+{"status":"ok"}
+````
+
+### `GET /health/ready`
+
+**Purpose:** Service readiness.
+
+Service becomes ready once:
+
+* at least one sample has been taken
+* last sample is not stale
+
+---
+
+## Metrics Endpoints
+
+### `GET /v1/metrics/latest`
+
+Returns the most recent snapshot.
+
+### `GET /v1/metrics/history?limit=N`
+
+Returns up to `N` most recent snapshots.
+
+### `GET /v1/metrics/allocations/top?limit=N`
+
+Top-N allocation entries by total allocated bytes.
+
+### `GET /v1/metrics/retentions/top?limit=N`
+
+Top-N retention entries by retained bytes.
+
+---
+
+## Suggestions
+
+### `GET /v1/suggestions`
+
+Returns the list of current optimization suggestions.
+
+Example:
+
+```json
+[
+  {
+    "id": "suggestion-3",
+    "type_name": "[]byte",
+    "tag": "payload",
+    "severity": "warning",
+    "message": "High memory retention detected for []byte...",
+    "created_at": "2025-01-01T10:00:00Z"
+  }
+]
+```
+
+---
+
+## Alerts
+
+### `GET /v1/alerts`
+
+Recomputes alerts from latest snapshot + suggestions.
+
+Example:
+
+```json
+[
+  {
+    "id": "retention-[]byte-default",
+    "severity": "critical",
+    "message": "Allocation type []byte retains ~90% of heap...",
+    "source": "retention",
+    "created_at": "2025-01-01T10:00:00Z"
+  }
+]
+```
+
+---
+
+## Prometheus Metrics
+
+### `GET /metrics`
+
+Exports gauges:
+
+* `goprof_heap_alloc_bytes`
+* `goprof_heap_inuse_bytes`
+* `goprof_heap_idle_bytes`
+* `goprof_heap_released_bytes`
+* `goprof_num_gc`
+
+---
+
+## Pprof Endpoints
+
+Enabled if:
+
+```yaml
+pprof_enabled: true
+```
+
+Available paths:
+
+* `/debug/pprof/`
+* `/debug/pprof/profile`
+* `/debug/pprof/heap`
+* `/debug/pprof/trace`
+
+````
+
+# 📘 **3. `docs/config.md`**
+
+**File:** `goprof-optimizer/docs/config.md`
+
+```markdown
+# Configuration Reference
+
+Configuration can be loaded from:
+
+1. YAML/JSON file
+2. Environment variables
+3. Defaults
+
+---
+
+# Fields
+
+| YAML Key | Env Var | Type | Default | Description |
+|---------|---------|-------|---------|-------------|
+| sampling_interval_ms | GOPROF_SAMPLING_INTERVAL_MS | int | 1000 | Sampling period for runtime stats |
+| retention_window_sec | GOPROF_RETENTION_WINDOW_SEC | int | 600 | Snapshot history size in seconds |
+| high_retention_threshold_percent | GOPROF_HIGH_RETENTION_THRESHOLD_PERCENT | float | 70.0 | High retention suggestion threshold |
+| metrics_listen_addr | GOPROF_METRICS_LISTEN_ADDR | string | ":8080" | Main HTTP address |
+| prometheus_enabled | GOPROF_PROMETHEUS_ENABLED | bool | true | Enable /metrics |
+| pprof_enabled | GOPROF_PPROF_ENABLED | bool | true | Enable /debug/pprof |
+| pprof_listen_addr | GOPROF_PPROF_LISTEN_ADDR | string | "" | Separate port for pprof |
+| max_history_samples | GOPROF_MAX_HISTORY_SAMPLES | int | 3600 | Max snapshots stored |
+| alerting_enabled | GOPROF_ALERTING_ENABLED | bool | true | Enable alert engine |
+| memory_spike_threshold_percent | GOPROF_MEMORY_SPIKE_THRESHOLD_PERCENT | float | 30.0 | Spike threshold |
+| log_level | GOPROF_LOG_LEVEL | string | "info" | debug/info/warn/error |
+| shutdown_grace_period_sec | GOPROF_SHUTDOWN_GRACE_PERIOD_SEC | int | 15 | Graceful shutdown |
+
+---
+
+# Validation Rules
+
+- sampling_interval_ms > 0  
+- retention_window_sec > sampling interval  
+- thresholds in (0, 100]  
+- listen addr non-empty  
+- history samples > 0  
+
+If any validation fails the service aborts startup.
+
+---
+
+# Example
+
+```yaml
+sampling_interval_ms: 500
+retention_window_sec: 300
+metrics_listen_addr: ":8081"
+prometheus_enabled: true
+log_level: "debug"
+````
+
+````
+
+---
+
+# 📘 **4. `docs/development.md`**
+
+**File:** `goprof-optimizer/docs/development.md`
+
+```markdown
+# Development Guide
+
+## Prerequisites
+
+- Go 1.22+
+- Docker (optional)
+- golangci-lint (optional)
+
+---
+
+## Running Locally
+
+```bash
+make run
+````
+
+This builds the binary with version metadata and loads:
+
+```
+config.example.yaml
+```
+
+---
+
+## Running Tests
+
+### Unit + integration tests:
+
+```bash
+make test
+```
+
+### Benchmarks:
+
+```bash
+make bench
+```
+
+---
+
+## Linting
+
+```bash
+make lint
+```
+
+Relies on `.golangci.yml`.
+
+---
+
+## Code Layout
+
+* `cmd/profiler/` — entrypoint binary
+* `internal/profiler/` — sampling + retention + suggestions
+* `internal/metrics/` — HTTP server
+* `internal/config/` — config loading + env overlay
+* `internal/alerts/` — alert engine
+* `internal/health/` — liveness/readiness checker
+* `internal/util/` — JSON helpers, error helpers
+* `tests/` — unit + integration tests
+
+---
+
+## Adding a New Endpoint
+
+1. Add handler in `internal/metrics/handlers_x.go`
+2. Register route in `router.go`
+3. Add tests in `tests/metrics_handlers_test.go`
+4. Update docs/api.md if public-facing
+5. Run `make test` and `make lint`
+
+---
+
+## Build Production Image
+
+```bash
+make docker-build
+```
+
+---
+
+## Debugging
+
+### Enable pprof
+
+```yaml
+pprof_enabled: true
+pprof_listen_addr: ":6060"
+```
+
+Then access:
+
+```
+/debug/pprof/
+```
+
+### Profiling CPU
+
+```bash
+go tool pprof http://localhost:6060/debug/pprof/profile
+```
+
+---
+
+## Coding Standards
+
+* Avoid global variables
+* Wrap errors with context
+* No fmt.Println in production code
+* All HTTP errors return JSON envelopes
+* Mutexes held as short as possible
+* No expensive reflection in hot paths

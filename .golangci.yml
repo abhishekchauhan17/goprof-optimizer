@@ -1,0 +1,51 @@
+run:
+  timeout: 5m
+  skip-dirs:
+    - vendor
+
+linters:
+  enable:
+    - errcheck
+    - staticcheck
+    - govet
+    - gosimple
+    - ineffassign
+    - unused
+    - revive
+    - dupl
+    - gocyclo
+    - bodyclose
+    - gosec
+    - unconvert
+    - misspell
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+
+  dupl:
+    threshold: 150
+
+  gosec:
+    severity: medium
+
+  revive:
+    rules:
+      - name: indent-error-flow
+      - name: exported
+      - name: if-return
+      - name: context-as-argument
+      - name: context-naming
+      - name: error-return
+      - name: error-naming
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 100
+  max-same-issues: 3
+  exclude:
+    - "SA1019" # allow deprecated APIs if intentionally used
+    - "G104"   # we intentionally ignore some errors in tests
+
+output:
+  format: colored-line-number

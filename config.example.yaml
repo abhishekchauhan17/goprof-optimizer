@@ -1,0 +1,19 @@
+# goprof-optimizer example configuration file
+
+sampling_interval_ms: 1000     # Sample memory every 1s
+retention_window_sec: 600      # Keep 10 minutes of samples
+high_retention_threshold_percent: 70.0
+
+metrics_listen_addr: ":8080"   # Main HTTP server address
+
+prometheus_enabled: true       # Enable /metrics for Prometheus
+pprof_enabled: true            # Enable /debug/pprof/*
+pprof_listen_addr: ""          # If empty, pprof served on same addr as metrics
+
+max_history_samples: 3600      # Up to 3600 snapshots in memory
+alerting_enabled: true
+
+memory_spike_threshold_percent: 30.0
+log_level: "info"
+
+shutdown_grace_period_sec: 15
