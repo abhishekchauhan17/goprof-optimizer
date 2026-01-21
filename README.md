@@ -1,94 +1,66 @@
+# goprof-optimizer
+
+Memory profiling and optimization helper for Go services. Provides:
+- Continuous heap sampling
+- Allocation/retention attribution by type + tag
+- Heuristic suggestions and alerts
+- Prometheus metrics
+- REST API
+- Optional pprof
+- Auto heap capture with rotation
+- Library for embedding (with per-route tagging middleware)
+
+## 🚀 Standalone Service
+
+```bash
+make run                      # uses config.example.yaml
+# or
+go run ./cmd/profiler         # defaults + env (GOPROF_*)
+go run ./cmd/profiler -config=config.example.yaml
+```
+
+Defaults: metrics on `:8080`, Prometheus enabled, pprof enabled (same port unless `pprof_listen_addr` set).  
+See [docs/config.md](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/docs/config.md:0:0-0:0) for env vars.
+
+### Endpoints (see [docs/api.md](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/docs/api.md:0:0-0:0))
+- `/health/live`, `/health/ready`
+- `/v1/metrics/latest`, `/v1/metrics/history?limit=N`
+- `/v1/metrics/allocations/top?limit=N`, `/v1/metrics/retentions/top?limit=N`
+- `/v1/suggestions`, `/v1/alerts`
+- `/v1/capture/heap` (manual heap capture)
+- [/metrics](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/metrics:0:0-0:0) (Prometheus)
+- `/debug/pprof/*`
+
+Auto-capture: enabled by `profile_capture_enabled`; thresholds + cooldown control cadence; files written to `profile_capture_dir` and rotated.
+
+---
+
 ## 📦 Embedding / Sidecar Usage
 
-Use the public wrappers under `pkg/` to embed this profiler in any Go application. This lets the profiler run inside your process, sample memory continuously, and expose HTTP/Prometheus/pprof endpoints alongside your app.
+Public packages under [pkg/](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg:0:0-0:0):
+- [pkg/config](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/config:0:0-0:0), [pkg/logging](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/logging:0:0-0:0)
+- [pkg/profiler](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/profiler:0:0-0:0) (Profiler, [RegisterPprofHandlers](cci:1://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/profiler/profiler.go:26:0-27:90))
+- [pkg/metrics](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/metrics:0:0-0:0) (http.Handler with all endpoints)
+- [pkg/agent](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/agent:0:0-0:0) (quick starter)
+- [pkg/middleware](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/middleware:0:0-0:0) (per-route tagging)
+- [pkg/attrib](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/attrib:0:0-0:0) ([Track()](cci:1://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/pkg/attrib/attrib.go:34:0-37:1) from context)
 
-- **Key packages**
-  - `pkg/config`: re-exports configuration (`ProfilerConfig`, `DefaultConfig`, `Load`, `Validate`).
-  - `pkg/logging`: re-exports `Logger`, `New`, `Noop`.
-  - `pkg/profiler`: re-exports `Profiler` and `RegisterPprofHandlers`.
-  - `pkg/metrics`: returns an `http.Handler` with all endpoints.
-  - `pkg/agent`: convenience starter that returns a handler and optionally runs a separate pprof server.
-
-- **Endpoints provided** (mounted wherever you choose):
-  - `/health/live`, `/health/ready`
-  - `/v1/metrics/latest`, `/v1/metrics/history?limit=N`
-  - `/v1/metrics/allocations/top?limit=N`, `/v1/metrics/retentions/top?limit=N`
-  - `/v1/suggestions`, `/v1/alerts`
-  - `/metrics` (Prometheus) when enabled
-  - pprof: `/debug/pprof/*` (on same or separate listener)
-
-### Option A: Fastest start (pkg/agent)
-
+### Quick start (pkg/agent)
 ```go
-package main
-
-import (
-    "net/http"
-
-    profilerAgent "github.com/abhishekchauhan17/goprof-optimizer/pkg/agent"
-    profilerConfig "github.com/abhishekchauhan17/goprof-optimizer/pkg/config"
-    profilerLogging "github.com/abhishekchauhan17/goprof-optimizer/pkg/logging"
-)
-
-func main() {
-    cfg := profilerConfig.DefaultConfig()
-    cfg.PrometheusEnabled = true
-    cfg.PprofEnabled = true
-    cfg.PprofListenAddr = ":6060" // separate pprof port (keep internal)
-
-    log := profilerLogging.New("info")
-    agent, _ := profilerAgent.Start(cfg, log)
-
-    mux := http.NewServeMux()
-    // Mount all profiler endpoints under /_profiler/*
-    mux.Handle("/_profiler/", http.StripPrefix("/_profiler", agent.Handler))
-
-    // Your app routes here...
-    // mux.HandleFunc("/api/...", yourHandler)
-
-    _ = http.ListenAndServe(":8080", mux)
-}
+mux := http.NewServeMux()
+agent, _ := profilerAgent.Start(cfg, log)
+mux.Handle("/_profiler/", http.StripPrefix("/_profiler", agent.Handler))
+_ = http.ListenAndServe(":8080", mux)
 ```
 
-### Option B: More control (pkg/profiler + pkg/metrics)
+---
 
-```go
-package main
+## Development
 
-import (
-    "context"
-    "net/http"
-
-    profilerConfig "github.com/abhishekchauhan17/goprof-optimizer/pkg/config"
-    profilerLogging "github.com/abhishekchauhan17/goprof-optimizer/pkg/logging"
-    profilerMetrics "github.com/abhishekchauhan17/goprof-optimizer/pkg/metrics"
-    profilerPkg "github.com/abhishekchauhan17/goprof-optimizer/pkg/profiler"
-)
-
-func main() {
-    cfg := profilerConfig.DefaultConfig()
-    log := profilerLogging.New("info")
-
-    p := profilerPkg.New(cfg, log)
-    ctx := context.Background()
-    p.Start(ctx)
-
-    handler := profilerMetrics.NewHandler(cfg, p, log)
-
-    mux := http.NewServeMux()
-    mux.Handle("/_profiler/", http.StripPrefix("/_profiler", handler))
-
-    // Optional: separate pprof listener
-    // mux2 := http.NewServeMux()
-    // profilerPkg.RegisterPprofHandlers(mux2)
-    // go http.ListenAndServe(":6060", mux2)
-
-    _ = http.ListenAndServe(":8080", mux)
-}
+```bash
+make test        # tests
+make bench       # benchmarks
+make lint        # lint
 ```
 
-### Tips
-
-- **Security**: keep pprof/internal endpoints on private networks or behind auth.
-- **Overhead**: start with `sampling_interval_ms: 500–1000` and cap `max_history_samples`.
-- **Attribution**: call `Profiler.TrackAllocation(obj, "tag")` in hot paths to power top allocations/retentions and suggestions.
+See [docs/development.md](cci:7://file:///home/stone_cold_steve_austin/Documents/golang-profiler/goprof-optimizer/docs/development.md:0:0-0:0) for details.
