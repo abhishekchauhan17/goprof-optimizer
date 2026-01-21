@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/abhishekchauhan17/goprof-optimizer/internal/alerts"
 	"github.com/abhishekchauhan17/goprof-optimizer/internal/config"
@@ -17,6 +18,9 @@ type Server struct {
 	alerts *alerts.Engine
 	health *health.Checker
 	logger logging.Logger
+
+	// lastProfileCapture enforces cooldown between auto captures.
+	lastProfileCapture time.Time
 }
 
 // NewServer constructs a Server.
@@ -57,6 +61,8 @@ func (s *Server) Router() http.Handler {
 	// Suggestions + alerts.
 	mux.HandleFunc("/v1/suggestions", s.handleSuggestions)
 	mux.HandleFunc("/v1/alerts", s.handleAlerts)
+	// Manual capture endpoints.
+	mux.HandleFunc("/v1/capture/heap", s.handleCaptureHeap)
 
 	// Prometheus.
 	if s.cfg.PrometheusEnabled {

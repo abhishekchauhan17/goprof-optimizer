@@ -3,11 +3,13 @@ package profiler
 import (
 	"context"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/abhishekchauhan17/goprof-optimizer/internal/config"
 	"github.com/abhishekchauhan17/goprof-optimizer/internal/logging"
+	"github.com/abhishekchauhan17/goprof-optimizer/internal/capture"
 )
 
 // AllocationStat represents aggregated allocation info for a (type, tag) pair.
@@ -17,6 +19,23 @@ type AllocationStat struct {
 	AllocCount        uint64 `json:"alloc_count"`
 	TotalAllocBytes   uint64 `json:"total_alloc_bytes"`
 	AverageAllocBytes uint64 `json:"average_alloc_bytes"`
+}
+
+// containsIgnoreCase checks if s is in list, case-insensitive.
+func containsIgnoreCase(list []string, s string) bool {
+	if len(list) == 0 { return false }
+	ls := strings.ToLower(s)
+	for _, it := range list {
+		if strings.ToLower(strings.TrimSpace(it)) == ls { return true }
+	}
+	return false
+}
+
+// CaptureCount returns the total number of automatic profile captures performed.
+func (p *Profiler) CaptureCount() uint64 {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.autoCaptureCount
 }
 
 // RetentionStat represents an estimate of how much heap a (type, tag) retains.
@@ -67,13 +86,20 @@ type Profiler struct {
 
 	mu sync.RWMutex
 
+	// history is a fixed-size ring buffer.
 	history     []ProfilerSnapshot
+	histStart   int
+	histCount   int
 	allocs      map[string]*AllocationStat
 	retentions  map[string]*RetentionStat
 	suggestions []OptimizationSuggestion
 
 	lastHeapAlloc uint64
 	lastSampleAt  time.Time
+
+	// background capture state
+	lastProfileCapture time.Time
+	autoCaptureCount   uint64
 
 	startOnce sync.Once
 }
@@ -85,10 +111,16 @@ func NewProfiler(cfg config.ProfilerConfig, logger logging.Logger) *Profiler {
 		logger = logging.Noop()
 	}
 
+	var hist []ProfilerSnapshot
+	if cfg.MaxHistorySamples > 0 {
+		hist = make([]ProfilerSnapshot, cfg.MaxHistorySamples)
+	}
 	return &Profiler{
 		cfg:         cfg,
 		logger:      logger.With("component", "profiler"),
-		history:     make([]ProfilerSnapshot, 0, cfg.MaxHistorySamples),
+		history:     hist,
+		histStart:   0,
+		histCount:   0,
 		allocs:      make(map[string]*AllocationStat),
 		retentions:  make(map[string]*RetentionStat),
 		suggestions: make([]OptimizationSuggestion, 0),
@@ -145,6 +177,40 @@ func (p *Profiler) sampleOnce() {
 	snap := p.buildSnapshotLocked(&ms, now)
 	p.appendSnapshotLocked(snap)
 
+	// Background: evaluate alerts and auto-capture heap profile if enabled.
+	if p.cfg.ProfileCaptureEnabled {
+		// Decide to capture using retention threshold heuristics to avoid import cycles:
+		// If any retained percent >= HighRetentionThresholdPercent and "critical" is configured,
+		// or >= MemorySpikeThresholdPercent and "warning" is configured, trigger capture.
+		wantCritical := containsIgnoreCase(p.cfg.ProfileCaptureOnSeverities, "critical") || len(p.cfg.ProfileCaptureOnSeverities) == 0
+		wantWarning := containsIgnoreCase(p.cfg.ProfileCaptureOnSeverities, "warning")
+		should := false
+		for _, rs := range snap.TopRetentions {
+			if wantCritical && rs.RetainedPercent >= p.cfg.HighRetentionThresholdPercent {
+				should = true
+				break
+			}
+			if wantWarning && rs.RetainedPercent >= p.cfg.MemorySpikeThresholdPercent {
+				should = true
+				break
+			}
+		}
+		if should {
+			cooldown := time.Duration(p.cfg.ProfileCaptureMinIntervalSec) * time.Second
+			if cooldown < 0 { cooldown = 0 }
+			if p.lastProfileCapture.IsZero() || now.Sub(p.lastProfileCapture) >= cooldown {
+				if path, err := capture.CaptureHeap(p.cfg.ProfileCaptureDir, "heap"); err != nil {
+					p.logger.Warn("auto heap capture failed", "error", err)
+				} else {
+					_ = capture.Rotate(p.cfg.ProfileCaptureDir, p.cfg.ProfileCaptureMaxFiles, "heap")
+					p.logger.Info("auto heap profile captured", "path", path)
+					p.lastProfileCapture = now
+					p.autoCaptureCount++
+				}
+			}
+		}
+	}
+
 	p.lastHeapAlloc = ms.HeapAlloc
 	p.lastSampleAt = now
 }
@@ -165,10 +231,12 @@ func (p *Profiler) LatestSnapshot() ProfilerSnapshot {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if len(p.history) == 0 {
+	if len(p.history) == 0 || p.histCount == 0 {
 		return ProfilerSnapshot{}
 	}
-	return p.history[len(p.history)-1]
+	size := len(p.history)
+	idx := (p.histStart + p.histCount - 1) % size
+	return p.history[idx]
 }
 
 // Snapshots returns up to `limit` most recent snapshots. If limit <= 0,
@@ -178,16 +246,19 @@ func (p *Profiler) Snapshots(limit int) []ProfilerSnapshot {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	n := len(p.history)
+	if len(p.history) == 0 || p.histCount == 0 {
+		return nil
+	}
+	n := p.histCount
 	if limit <= 0 || limit > n {
 		limit = n
 	}
-	if limit == 0 {
-		return nil
-	}
-
 	out := make([]ProfilerSnapshot, limit)
-	copy(out, p.history[n-limit:])
+	size := len(p.history)
+	start := (p.histStart + (n - limit)) % size
+	for i := 0; i < limit; i++ {
+		out[i] = p.history[(start+i)%size]
+	}
 	return out
 }
 

@@ -40,19 +40,25 @@ func (p *Profiler) buildSnapshotLocked(ms *runtime.MemStats, now time.Time) Prof
 // appendSnapshotLocked appends a snapshot to history and enforces the
 // MaxHistorySamples bound. Caller must hold p.mu.
 func (p *Profiler) appendSnapshotLocked(snap ProfilerSnapshot) {
-	if p.cfg.MaxHistorySamples <= 0 {
-		p.history = nil
+	if p.cfg.MaxHistorySamples <= 0 || len(p.history) == 0 {
+		// History disabled
+		p.histStart = 0
+		p.histCount = 0
 		return
 	}
 
-	if len(p.history) < p.cfg.MaxHistorySamples {
-		p.history = append(p.history, snap)
+	size := len(p.history)
+	if p.histCount < size {
+		// Still filling buffer
+		idx := (p.histStart + p.histCount) % size
+		p.history[idx] = snap
+		p.histCount++
 		return
 	}
 
-	// Evict oldest: shift slice by 1 and put new at end.
-	copy(p.history[0:], p.history[1:])
-	p.history[len(p.history)-1] = snap
+	// Buffer full: overwrite oldest and advance start
+	p.history[p.histStart] = snap
+	p.histStart = (p.histStart + 1) % size
 }
 
 // topAllocationsLocked returns top-N allocation stats sorted descending by

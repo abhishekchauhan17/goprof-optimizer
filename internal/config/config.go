@@ -47,4 +47,20 @@ type ProfilerConfig struct {
 	// ShutdownGracePeriodSec controls how long the server will wait for in-flight
 	// requests to finish on shutdown before forcing exit.
 	ShutdownGracePeriodSec int `json:"shutdown_grace_period_sec" yaml:"shutdown_grace_period_sec"`
+
+	// ProfileCaptureEnabled toggles automatic heap profile capture when alerts fire.
+	ProfileCaptureEnabled bool `json:"profile_capture_enabled" yaml:"profile_capture_enabled"`
+
+	// ProfileCaptureDir is the directory where captured profiles are stored.
+	ProfileCaptureDir string `json:"profile_capture_dir" yaml:"profile_capture_dir"`
+
+	// ProfileCaptureMaxFiles limits how many recent capture files to retain.
+	ProfileCaptureMaxFiles int `json:"profile_capture_max_files" yaml:"profile_capture_max_files"`
+
+	// ProfileCaptureMinIntervalSec enforces a cooldown between automatic captures.
+	ProfileCaptureMinIntervalSec int `json:"profile_capture_min_interval_sec" yaml:"profile_capture_min_interval_sec"`
+
+	// ProfileCaptureOnSeverities lists alert severities that should trigger capture
+	// (e.g., ["critical"], or ["warning","critical"]). Case-insensitive.
+	ProfileCaptureOnSeverities []string `json:"profile_capture_on_severities" yaml:"profile_capture_on_severities"`
 }

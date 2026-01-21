@@ -58,6 +58,16 @@ func Validate(cfg *ProfilerConfig) error {
 		errs = append(errs, fmt.Errorf("shutdown_grace_period_sec must be >= 0 (got %d)", cfg.ShutdownGracePeriodSec))
 	}
 
+	// Validate profile capture fields when enabled (non-breaking defaults used elsewhere)
+	if cfg.ProfileCaptureEnabled {
+		if cfg.ProfileCaptureMaxFiles < 0 {
+			errs = append(errs, fmt.Errorf("profile_capture_max_files must be >= 0 (got %d)", cfg.ProfileCaptureMaxFiles))
+		}
+		if cfg.ProfileCaptureMinIntervalSec < 0 {
+			errs = append(errs, fmt.Errorf("profile_capture_min_interval_sec must be >= 0 (got %d)", cfg.ProfileCaptureMinIntervalSec))
+		}
+	}
+
 	if len(errs) == 0 {
 		return nil
 	}

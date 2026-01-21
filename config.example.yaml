@@ -17,3 +17,10 @@ memory_spike_threshold_percent: 30.0
 log_level: "info"
 
 shutdown_grace_period_sec: 15
+
+# Auto heap profile capture (can also be set via env; see env names in loader.go)
+profile_capture_enabled: false
+profile_capture_dir: "./profiles"
+profile_capture_max_files: 10
+profile_capture_min_interval_sec: 60
+profile_capture_on_severities: ["critical"]

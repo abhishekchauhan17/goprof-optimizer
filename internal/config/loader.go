@@ -27,6 +27,13 @@ const (
 	envMemorySpikeThresholdPct   = "GOPROF_MEMORY_SPIKE_THRESHOLD_PERCENT"
 	envLogLevel                  = "GOPROF_LOG_LEVEL"
 	envShutdownGracePeriodSec    = "GOPROF_SHUTDOWN_GRACE_PERIOD_SEC"
+
+	// Auto profile capture env vars
+	envProfileCaptureEnabled        = "GOPROF_PROFILE_CAPTURE_ENABLED"
+	envProfileCaptureDir            = "GOPROF_PROFILE_CAPTURE_DIR"
+	envProfileCaptureMaxFiles       = "GOPROF_PROFILE_CAPTURE_MAX_FILES"
+	envProfileCaptureMinIntervalSec = "GOPROF_PROFILE_CAPTURE_MIN_INTERVAL_SEC"
+	envProfileCaptureOnSeverities   = "GOPROF_PROFILE_CAPTURE_ON_SEVERITIES" // comma-separated
 )
 
 // Load loads configuration in the following order:
@@ -181,6 +188,43 @@ func overlayFromEnv(cfg *ProfilerConfig) error {
 		}
 	}
 
+	// Auto profile capture overlays
+	if v, ok := os.LookupEnv(envProfileCaptureEnabled); ok {
+		if b, err := parseBool(v); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", envProfileCaptureEnabled, err))
+		} else {
+			cfg.ProfileCaptureEnabled = b
+		}
+	}
+	if v, ok := os.LookupEnv(envProfileCaptureDir); ok {
+		cfg.ProfileCaptureDir = strings.TrimSpace(v)
+	}
+	if v, ok := os.LookupEnv(envProfileCaptureMaxFiles); ok {
+		if i, err := strconv.Atoi(v); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", envProfileCaptureMaxFiles, err))
+		} else {
+			cfg.ProfileCaptureMaxFiles = i
+		}
+	}
+	if v, ok := os.LookupEnv(envProfileCaptureMinIntervalSec); ok {
+		if i, err := strconv.Atoi(v); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", envProfileCaptureMinIntervalSec, err))
+		} else {
+			cfg.ProfileCaptureMinIntervalSec = i
+		}
+	}
+	if v, ok := os.LookupEnv(envProfileCaptureOnSeverities); ok {
+		parts := strings.Split(v, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				out = append(out, p)
+			}
+		}
+		cfg.ProfileCaptureOnSeverities = out
+	}
+
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
@@ -192,7 +236,7 @@ func parseBool(v string) (bool, error) {
 	case "1", "true", "t", "yes", "y":
 		return true, nil
 	case "0", "false", "f", "no", "n":
-		return false, fmt.Errorf("invalid boolean value %q", v)
+		return false, nil
 	default:
 		return false, fmt.Errorf("invalid boolean value %q", v)
 	}

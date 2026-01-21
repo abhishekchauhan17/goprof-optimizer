@@ -21,5 +21,12 @@ func DefaultConfig() ProfilerConfig {
 
 		LogLevel:               "info",
 		ShutdownGracePeriodSec: 15,
+
+		// Auto profile capture defaults
+		ProfileCaptureEnabled:        false,
+		ProfileCaptureDir:            "./profiles",
+		ProfileCaptureMaxFiles:       10,
+		ProfileCaptureMinIntervalSec: 60,
+		ProfileCaptureOnSeverities:   []string{"critical"},
 	}
 }
